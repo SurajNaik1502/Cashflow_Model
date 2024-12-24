@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Forecast Input</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        padding: 20px;
+      }
+
+      form {
+        max-width: 400px;
+        margin: auto;
+        padding: 20px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+      }
+
+      label {
+        font-weight: bold;
+      }
+
+      input[type="text"] {
+        width: 95%;
+        padding: 8px;
+        margin: 10px 0 20px 0;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      }
+
+      button {
+        padding: 10px 15px;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background-color: #0056b3;
+      }
+
+      .response {
+        margin-top: 20px;
+      }
+
+      .error {
+        color: red;
+      }
+    </style>
+  </head>
+
+  <body>
+    <h1>Forecast API Input</h1>
+    <form id="forecastForm">
+      <label for="project">Project:</label>
+      <input type="text" id="project" name="project" required />
+
+      <label for="ledger">Ledger:</label>
+      <input type="text" id="ledger" name="ledger" required />
+
+      <label for="company">Company:</label>
+      <input type="text" id="company" name="company" required />
+
+      <button type="submit">Submit</button>
+    </form>
+
+    <div class="response" id="response"></div>
+
+    <script>
+      document
+        .getElementById("forecastForm")
+        .addEventListener("submit", function (event) {
+          event.preventDefault();
+
+          // Get input values
+          const project = document.getElementById("project").value;
+          const ledger = document.getElementById("ledger").value;
+          const company = document.getElementById("company").value;
+
+          // Send the POST request to the API
+          fetch("http://127.0.0.1:8000/forecast", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({
+              project: project,
+              ledger: ledger,
+              company: company,
+            }),
+          })
+            .then((response) => response.json())
+            .then((data) => {
+              const responseDiv = document.getElementById("response");
+              responseDiv.innerHTML = "";
+
+              if (data.error) {
+                responseDiv.innerHTML = `<p class="error">${data.error}</p>`;
+              } else {
+                let result = "<h2>Forecast Results</h2><ul>";
+                data.forecast.forEach((item) => {
+                  result += `<li>${item.date}: ${item.forecast}</li>`;
+                });
+                result += "</ul>";
+                responseDiv.innerHTML = result;
+              }
+            })
+            .catch((error) => {
+              document.getElementById(
+                "response"
+              ).innerHTML = `<p class="error">Error: ${error.message}</p>`;
+            });
+        });
+    </script>
+  </body>
+</html>
