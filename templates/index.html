@@ -14,7 +14,6 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            height: 100vh;
             background: linear-gradient(135deg, #ffffff, #91d1f3);
             color: #ffffff;
         }
@@ -28,6 +27,8 @@
             max-width: 500px;
             width: 100%;
             color: #333333;
+            margin-top: 20px;
+            margin-bottom: 20px;
         }
 
         h1 {
@@ -50,7 +51,7 @@
             color: #2c3e50;
         }
 
-        input[type="text"], input[type="date"] {
+        input[type="text"], input[type="date"], input[type="file"], select {
             width: 95%;
             padding: 12px;
             border: 1px solid #ddd;
@@ -60,18 +61,8 @@
             color: #2c3e50;
             transition: all 0.3s ease;
         }
-        select {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            font-size: 16px;
-            background: #f9f9f9;
-            color: #2c3e50;
-            transition: all 0.3s ease;
-        }
 
-        input[type="text"]:focus, input[type="date"]:focus, select:focus {
+        input[type="text"]:focus, input[type="date"]:focus, input[type="file"]:focus, select:focus {
             background: #ffffff;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
             outline: none;
@@ -101,24 +92,27 @@
 <body>
     <div class="container">
         <h1>Forecast API Input</h1>
-        <form action="/forecast" method="GET">
+        <form action="/forecast" method="POST" enctype="multipart/form-data">
+            <label for="file">Upload Dataset (CSV):</label>
+            <input type="file" id="file" name="file" accept=".csv" required>
+
             <label for="project">Project:</label>
-            <input type="text" id="project" name="project" placeholder="Enter project name" >
+            <input type="text" id="project" name="project" placeholder="Enter project name" required>
 
             <label for="ledger">Ledger:</label>
-            <input type="text" id="ledger" name="ledger" placeholder="Enter ledger name" >
+            <input type="text" id="ledger" name="ledger" placeholder="Enter ledger name" required>
 
             <label for="company">Company:</label>
-            <input type="text" id="company" name="company" placeholder="Enter company name" >
+            <input type="text" id="company" name="company" placeholder="Enter company name" required>
 
             <label for="start_date">Start Date:</label>
-            <input type="date" id="start_date" name="start_date" >
+            <input type="date" id="start_date" name="start_date" required>
 
             <label for="end_date">End Date:</label>
-            <input type="date" id="end_date" name="end_date" >
+            <input type="date" id="end_date" name="end_date" required>
 
             <label for="output_format">Output Format:</label>
-            <select id="output_format" name="output_format" >
+            <select id="output_format" name="output_format" required>
                 <option value="json">JSON</option>
                 <option value="csv">CSV</option>
             </select>

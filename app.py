@@ -5,12 +5,15 @@ from sklearn.model_selection import train_test_split
 from xgboost import XGBRegressor
 import csv
 import io
+import os
 
 app = Flask(__name__)
+# Set the upload folder to 'Dataset'
+app.config['UPLOAD_FOLDER'] = 'Dataset'
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Function for training the forecasting model
-def train_forecasting_model(input_group, start_date, end_date):
-    df = pd.read_csv('Dataset/ledger.csv')
+def train_forecasting_model(df, input_group, start_date, end_date):
     grouped_df = df.groupby(['project', 'ledger', 'company']).size()
     filtered_groups = grouped_df[grouped_df > 37]
 
@@ -58,46 +61,64 @@ def train_forecasting_model(input_group, start_date, end_date):
 def home():
     return render_template('index.html')
 
-@app.route('/forecast', methods=['GET'])
+@app.route('/forecast', methods=['POST'])
 def forecast():
-    project = request.args.get('project')
-    ledger = request.args.get('ledger')
-    company = request.args.get('company')
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
-    output_format = request.args.get('output_format')
+    if 'file' not in request.files:
+        return "Error: No file uploaded. Please upload a CSV file.", 400
 
-    if not project or not ledger or not company or not start_date or not end_date or not output_format:
-        return "Error: Please provide valid project, ledger, company, start_date, end_date, and output_format parameters.", 400
+    file = request.files['file']
 
-    input_group = (project, ledger, company)
-    forecasted_values = train_forecasting_model(input_group, start_date, end_date)
-    
-    if forecasted_values is not None:
-        if output_format == 'csv':
-            # Create a CSV file in memory
-            output = io.StringIO()
-            writer = csv.DictWriter(output, fieldnames=["date", "forecast"])
-            writer.writeheader()
-            writer.writerows(forecasted_values)
-            csv_content = output.getvalue()
-            output.close()
+    if file.filename == '':
+        return "Error: No selected file. Please select a CSV file to upload.", 400
 
-            # Return CSV as a file download
-            response = make_response(csv_content)
-            response.headers["Content-Disposition"] = "attachment; filename=forecast.csv"
-            response.headers["Content-Type"] = "text/csv"
-            return response
-        elif output_format == 'json':
-            # Return JSON response as a file download
-            response = make_response(jsonify(forecasted_values))
-            response.headers["Content-Disposition"] = "attachment; filename=forecast.json"
-            response.headers["Content-Type"] = "application/json"
-            return response
+    if file and file.filename.endswith('.csv'):
+        
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+        file.save(file_path)
+
+        # Load the CSV file into a DataFrame
+        df = pd.read_csv(file_path)
+
+        project = request.form.get('project')
+        ledger = request.form.get('ledger')
+        company = request.form.get('company')
+        start_date = request.form.get('start_date')
+        end_date = request.form.get('end_date')
+        output_format = request.form.get('output_format')
+
+        if not project or not ledger or not company or not start_date or not end_date or not output_format:
+            return "Error: Please provide valid project, ledger, company, start_date, end_date, and output_format parameters.", 400
+
+        input_group = (project, ledger, company)
+        forecasted_values = train_forecasting_model(df, input_group, start_date, end_date)
+        
+        if forecasted_values is not None:
+            if output_format == 'csv':
+                # Create a CSV file in memory
+                output = io.StringIO()
+                writer = csv.DictWriter(output, fieldnames=["date", "forecast"])
+                writer.writeheader()
+                writer.writerows(forecasted_values)
+                csv_content = output.getvalue()
+                output.close()
+
+                # Return CSV as a file download
+                response = make_response(csv_content)
+                response.headers["Content-Disposition"] = "attachment; filename=forecast.csv"
+                response.headers["Content-Type"] = "text/csv"
+                return response
+            elif output_format == 'json':
+                # Return JSON response as a file download
+                response = make_response(jsonify(forecasted_values))
+                response.headers["Content-Disposition"] = "attachment; filename=forecast.json"
+                response.headers["Content-Type"] = "application/json"
+                return response
+            else:
+                return "Error: Invalid output format. Please specify 'csv' or 'json'.", 400
         else:
-            return "Error: Invalid output format. Please specify 'csv' or 'json'.", 400
+            return "Error: The specified group was not found or there was an issue with the data.", 404
     else:
-        return "Error: The specified group was not found or there was an issue with the data.", 404
+        return "Error: Invalid file type. Please upload a valid CSV file.", 400
 
 if __name__ == '__main__':
     app.run(debug=True, port=8000)
