@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, jsonify, make_response
+from flask import Flask, request, jsonify, make_response
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -6,23 +6,22 @@ from xgboost import XGBRegressor
 import csv
 import io
 import os
-import pickle
+import joblib
 
 app = Flask(__name__)
+
 # Set the upload folder to 'Dataset'
 app.config['UPLOAD_FOLDER'] = 'Dataset'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+MODEL_PATH = "forecasting_model.pkl"
 
-# Dictionary to store trained models for each group
-trained_models = {}
-
-# Function for training the forecasting models for all valid groups
-def train_forecasting_models(df):
-    global trained_models
+# Function to train and save the model
+def train_and_save_model(df):
     grouped_df = df.groupby(['project', 'ledger', 'company']).size()
-    valid_groups = grouped_df[grouped_df > 37].index
+    filtered_groups = grouped_df[grouped_df > 37]
 
-    for group in valid_groups:
+    models = {}
+    for group in filtered_groups.index:
         specific_group_data = df[
             (df['project'] == group[0]) & 
             (df['ledger'] == group[1]) & 
@@ -36,56 +35,49 @@ def train_forecasting_models(df):
         num_lags = 10
         for i in range(1, num_lags + 1):
             specific_group_data[f'lag_{i}'] = specific_group_data['dr_cr'].shift(i)
-        
+
         specific_group_data.dropna(inplace=True)
         feature_columns = [col for col in specific_group_data.columns if col.startswith('lag_')]
         X = specific_group_data[feature_columns]
         y = specific_group_data['target']
-        
+
         X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2, shuffle=False)
 
         model = XGBRegressor(objective='reg:squarederror')
         model.fit(X_train, y_train)
 
-        # Save the trained model
-        trained_models[group] = {
-            'model': model,
-            'last_data': X.iloc[-1].values
-        }
+        models[group] = model
 
-# Function to generate forecasts for all groups
-def generate_forecasts(start_date, end_date):
-    forecast_results = []
-    forecast_dates = pd.date_range(start=start_date, end=end_date, freq='D')
+    # Save the trained models to a file
+    joblib.dump(models, MODEL_PATH)
 
-    for group, data in trained_models.items():
-        model = data['model']
-        last_data = data['last_data'].copy()
+# Function for forecasting using a saved model
+def forecast_from_saved_model(input_group, start_date, end_date):
+    if not os.path.exists(MODEL_PATH):
+        return None  # Model not trained or saved yet
 
-        group_forecast = []
+    models = joblib.load(MODEL_PATH)
+
+    if input_group in models:
+        model = models[input_group]
+        forecast_dates = pd.date_range(start=start_date, end=end_date, freq='D')
+
+        # Generate initial lag features
+        lag_values = np.zeros(10)
+        forecast = []
         for _ in forecast_dates:
-            next_value = model.predict(last_data.reshape(1, -1))[0]
-            group_forecast.append(float(next_value))
-            last_data = np.roll(last_data, shift=-1)
-            last_data[-1] = next_value
+            next_value = model.predict(lag_values.reshape(1, -1))[0]
+            forecast.append(float(next_value))  # Convert to float
+            lag_values = np.roll(lag_values, shift=-1)
+            lag_values[-1] = next_value
 
-        for date, forecast in zip(forecast_dates, group_forecast):
-            forecast_results.append({
-                "project": group[0],
-                "ledger": group[1],
-                "company": group[2],
-                "date": date.strftime('%Y-%m-%d'),
-                "forecast": forecast
-            })
+        return [{"date": date.strftime('%Y-%m-%d'), "forecast": value} for date, value in zip(forecast_dates, forecast)]
 
-    return forecast_results
-
-@app.route('/')
-def home():
-    return render_template('train.html')
+    return None
 
 @app.route('/train', methods=['POST'])
-def train():
+def train_model():
+    # Get file from request
     if 'file' not in request.files:
         return "Error: No file uploaded. Please upload a CSV file.", 400
 
@@ -100,47 +92,55 @@ def train():
 
         # Load the CSV file into a DataFrame
         df = pd.read_csv(file_path)
-        train_forecasting_models(df)
-        return "Model training completed for all valid groups.", 200
+        train_and_save_model(df)
+
+        return "Model training and saving completed successfully.", 200
     else:
         return "Error: Invalid file type. Please upload a valid CSV file.", 400
 
 @app.route('/forecast', methods=['POST'])
 def forecast():
-    start_date = request.form.get('start_date')
-    end_date = request.form.get('end_date')
-    output_format = request.form.get('output_format')
+    # Get data from POST request body (JSON)
+    data = request.get_json()
 
-    if not start_date or not end_date or not output_format:
-        return "Error: Please provide valid start_date, end_date, and output_format parameters.", 400
+    project = data.get('project')
+    ledger = data.get('ledger')
+    company = data.get('company')
+    start_date = data.get('start_date')
+    end_date = data.get('end_date')
+    output_format = data.get('output_format')
 
-    if not trained_models:
-        return "Error: No trained models found. Please upload a dataset and train the models first.", 400
+    if not project or not ledger or not company or not start_date or not end_date or not output_format:
+        return jsonify({"error": "Please provide valid project, ledger, company, start_date, end_date, and output_format parameters."}), 400
 
-    forecasted_values = generate_forecasts(start_date, end_date)
+    input_group = (project, ledger, company)
+    forecasted_values = forecast_from_saved_model(input_group, start_date, end_date)
+    
+    if forecasted_values is not None:
+        if output_format == 'csv':
+            # Create a CSV file in memory
+            output = io.StringIO()
+            writer = csv.DictWriter(output, fieldnames=["date", "forecast"])
+            writer.writeheader()
+            writer.writerows(forecasted_values)
+            csv_content = output.getvalue()
+            output.close()
 
-    if output_format == 'csv':
-        # Create a CSV file in memory
-        output = io.StringIO()
-        writer = csv.DictWriter(output, fieldnames=["project", "ledger", "company", "date", "forecast"])
-        writer.writeheader()
-        writer.writerows(forecasted_values)
-        csv_content = output.getvalue()
-        output.close()
-
-        # Return CSV as a file download
-        response = make_response(csv_content)
-        response.headers["Content-Disposition"] = "attachment; filename=forecast.csv"
-        response.headers["Content-Type"] = "text/csv"
-        return response
-    elif output_format == 'json':
-        # Return JSON response
-        response = make_response(jsonify(forecasted_values))
-        response.headers["Content-Disposition"] = "attachment; filename=forecast.json"
-        response.headers["Content-Type"] = "application/json"
-        return response
+            # Return CSV as a file download
+            response = make_response(csv_content)
+            response.headers["Content-Disposition"] = "attachment; filename=forecast.csv"
+            response.headers["Content-Type"] = "text/csv"
+            return response
+        elif output_format == 'json':
+            # Return JSON response as a file download
+            response = make_response(jsonify(forecasted_values))
+            response.headers["Content-Disposition"] = "attachment; filename=forecast.json"
+            response.headers["Content-Type"] = "application/json"
+            return response
+        else:
+            return jsonify({"error": "Invalid output format. Please specify 'csv' or 'json'."}), 400
     else:
-        return "Error: Invalid output format. Please specify 'csv' or 'json'.", 400
+        return jsonify({"error": "The specified group was not found or the model is not trained."}), 404
 
 if __name__ == '__main__':
     app.run(debug=True, port=8000)
