@@ -51,7 +51,7 @@
             color: #2c3e50;
         }
 
-        input[type="date"], input[type="text"], select {
+        input[type="date"], input[type="file"], select {
             width: 95%;
             padding: 12px;
             border: 1px solid #ddd;
@@ -62,7 +62,7 @@
             transition: all 0.3s ease;
         }
 
-        input[type="date"]:focus, input[type="text"]:focus, select:focus {
+        input[type="date"]:focus, input[type="file"]:focus, select:focus {
             background: #ffffff;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
             outline: none;
@@ -86,21 +86,34 @@
             transform: scale(1.05);
             box-shadow: 0 6px 10px rgba(0, 0, 0, 0.2);
         }
+
+        .cancel-button {
+            display: none;
+            margin-top: -10px;
+            margin-bottom: 10px;
+            padding: 5px 10px;
+            background: #e74c3c;
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .cancel-button:hover {
+            background: #c0392b;
+        }
     </style>
 </head>
 
 <body>
     <div class="container">
         <h1>Forecast API Input</h1>
-        <form action="/forecast" method="POST">
-            <label for="project">Project:</label>
-            <input type="text" id="project" name="project" placeholder="Enter project name" required>
-
-            <label for="ledger">Ledger:</label>
-            <input type="text" id="ledger" name="ledger" placeholder="Enter ledger name" required>
-
-            <label for="company">Company:</label>
-            <input type="text" id="company" name="company" placeholder="Enter company name" required>
+        <form action="/forecast" method="POST" enctype="multipart/form-data">
+            <label for="file">Upload Dataset (CSV):</label>
+            <input type="file" id="file" name="file" accept=".csv" required>
+            <button type="button" class="cancel-button" id="cancel-button">Cancel</button>
 
             <label for="start_date">Start Date:</label>
             <input type="date" id="start_date" name="start_date" required>
@@ -117,6 +130,21 @@
             <button type="submit">Submit</button>
         </form>
     </div>
-</body>
 
+    <script>
+        const fileInput = document.getElementById('file');
+        const cancelButton = document.getElementById('cancel-button');
+
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                cancelButton.style.display = 'inline-block';
+            }
+        });
+
+        cancelButton.addEventListener('click', () => {
+            fileInput.value = '';
+            cancelButton.style.display = 'none';
+        });
+    </script>
+</body>
 </html>
