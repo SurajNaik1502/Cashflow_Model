@@ -10,12 +10,10 @@ import joblib
 
 app = Flask(__name__)
 
-# Set the upload folder to 'Dataset'
 app.config['UPLOAD_FOLDER'] = 'Dataset'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 MODEL_PATH = "forecasting_model.pkl"
 
-# Function to train and save the model
 def train_and_save_model(df):
     grouped_df = df.groupby(['project', 'ledger', 'company']).size()
     filtered_groups = grouped_df[grouped_df > 37]
@@ -48,13 +46,11 @@ def train_and_save_model(df):
 
         models[group] = model
 
-    # Save the trained models to a file
     joblib.dump(models, MODEL_PATH)
 
-# Function for forecasting using a saved model
 def forecast_from_saved_model(input_group, start_date, end_date):
     if not os.path.exists(MODEL_PATH):
-        return None  # Model not trained or saved yet
+        return None
 
     models = joblib.load(MODEL_PATH)
 
@@ -62,12 +58,11 @@ def forecast_from_saved_model(input_group, start_date, end_date):
         model = models[input_group]
         forecast_dates = pd.date_range(start=start_date, end=end_date, freq='D')
 
-        # Generate initial lag features
         lag_values = np.zeros(10)
         forecast = []
         for _ in forecast_dates:
             next_value = model.predict(lag_values.reshape(1, -1))[0]
-            forecast.append(float(next_value))  # Convert to float
+            forecast.append(float(next_value))
             lag_values = np.roll(lag_values, shift=-1)
             lag_values[-1] = next_value
 
@@ -77,7 +72,6 @@ def forecast_from_saved_model(input_group, start_date, end_date):
 
 @app.route('/train', methods=['POST'])
 def train_model():
-    # Get file from request
     if 'file' not in request.files:
         return "Error: No file uploaded. Please upload a CSV file.", 400
 
@@ -90,7 +84,6 @@ def train_model():
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(file_path)
 
-        # Load the CSV file into a DataFrame
         df = pd.read_csv(file_path)
         train_and_save_model(df)
 
@@ -100,7 +93,6 @@ def train_model():
 
 @app.route('/forecast', methods=['POST'])
 def forecast():
-    # Get data from POST request body (JSON)
     data = request.get_json()
 
     project = data.get('project')
@@ -118,7 +110,6 @@ def forecast():
     
     if forecasted_values is not None:
         if output_format == 'csv':
-            # Create a CSV file in memory
             output = io.StringIO()
             writer = csv.DictWriter(output, fieldnames=["date", "forecast"])
             writer.writeheader()
@@ -126,13 +117,11 @@ def forecast():
             csv_content = output.getvalue()
             output.close()
 
-            # Return CSV as a file download
             response = make_response(csv_content)
             response.headers["Content-Disposition"] = "attachment; filename=forecast.csv"
             response.headers["Content-Type"] = "text/csv"
             return response
         elif output_format == 'json':
-            # Return JSON response as a file download
             response = make_response(jsonify(forecasted_values))
             response.headers["Content-Disposition"] = "attachment; filename=forecast.json"
             response.headers["Content-Type"] = "application/json"
